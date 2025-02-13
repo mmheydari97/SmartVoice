@@ -1,6 +1,6 @@
 import base64
 from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 import io
 import json
 from openai import AzureOpenAI  
@@ -9,7 +9,6 @@ from pathlib import Path
 import tempfile
 import wave
 
-"https://azopenai-01.openai.azure.com/openai/deployments//audio/translations?api-version="
 
 endpoint = os.getenv("ENDPOINT_URL", "https://azopenai-01.openai.azure.com/")  
 deployment = os.getenv("DEPLOYMENT_NAME", "whisper-ai-01")  
@@ -52,11 +51,15 @@ async def upload_audio(file: UploadFile = File(...)):
                 file=temp_wav_path,  # Pass the actual file path
                 model=deployment
             )
-            result = json.loads(completion.to_json()).get("text")
+            result = completion.to_json()
             print(f"Received from Azure: {result}")
 
         # Return the WAV file as a streaming response
-        return StreamingResponse(wav_stream, media_type="audio/wav")
+        # return StreamingResponse(wav_stream, media_type="audio/wav")
+
+        # Return the text result as a JSON response
+        return JSONResponse(content={"text": result})
 
     except Exception as e:
         return {"error": str(e)}
+    

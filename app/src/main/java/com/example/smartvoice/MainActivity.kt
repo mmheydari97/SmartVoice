@@ -11,33 +11,40 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
 
     private var audioRecord: AudioRecord? = null
     private var isRecording by mutableStateOf(false)
+    private var isProcessing by mutableStateOf(false)
     private lateinit var audioFile: File
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
-        .build()
+    private val client = OkHttpClient()
+
+    private val textHistory = mutableStateListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,23 +52,64 @@ class MainActivity : ComponentActivity() {
         requestPermissions()
 
         setContent {
-            Column(
+            MainScreen()
+        }
+    }
+
+    @Composable
+    fun MainScreen() {
+        val coroutineScope = rememberCoroutineScope()
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            // Scrollable History of Received Text Responses
+            LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
             ) {
-                Button(onClick = {
-                    if (isRecording) {
-                        stopRecording()
-                    } else {
-                        startRecording()
-                    }
-                }) {
-                    Text(if (isRecording) "Stop Recording" else "Start Recording")
+                items(textHistory) { text ->
+                    MessageBubble(text)
                 }
             }
+
+            // Recording Button at the Bottom
+            Button(
+                onClick = {
+                    if (!isRecording) {
+                        startRecording()
+                    } else {
+                        stopRecording()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                enabled = !isProcessing // Disable button while processing
+            ) {
+                Text(if (isRecording) "Stop & Send" else "Start Recording")
+            }
+        }
+    }
+
+    @Composable
+    fun MessageBubble(message: String) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp)
+                .background(color = Color.LightGray, shape = MaterialTheme.shapes.medium)
+                .padding(12.dp)
+        ) {
+            Text(
+                text = message,
+                fontSize = 16.sp,
+                textAlign = TextAlign.Start
+            )
         }
     }
 
@@ -88,7 +136,7 @@ class MainActivity : ComponentActivity() {
             AudioFormat.ENCODING_PCM_16BIT
         )
 
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             return
         }
 
@@ -144,6 +192,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendAudioToServer(pcmData: ByteArray) {
+        isProcessing = true
         val url = "https://8000--main--kian-ws--kian--o1bn8ir3s2nsq.pit-1.try.coder.app/upload-audio/"
 
         // Create request body
@@ -166,8 +215,22 @@ class MainActivity : ComponentActivity() {
                 Log.e("app_flow", "Failed to send audio: ${e.message}")
                 runOnUiThread {
                     Toast.makeText(applicationContext, "Failed to send audio", Toast.LENGTH_SHORT).show()
+                    isProcessing = false
                 }
             }
+
+// If there's audio response in Wav format
+//            override fun onResponse(call: Call, response: Response) {
+//                if (!response.isSuccessful) {
+//                    Log.e("app_flow", "Server returned error: ${response.code}")
+//                    return
+//                }
+//
+//                val responseBody = response.body?.bytes()
+//                if (responseBody != null) {
+//                    saveReceivedWavFile(responseBody)
+//                }
+//            }
 
             override fun onResponse(call: Call, response: Response) {
                 if (!response.isSuccessful) {
@@ -175,24 +238,31 @@ class MainActivity : ComponentActivity() {
                     return
                 }
 
-                val responseBody = response.body?.bytes()
-                if (responseBody != null) {
-                    saveReceivedWavFile(responseBody)
+                response.body?.string()?.let {
+                    val responseJson = JSONObject(it)
+                    val text = responseJson.getString("text")
+                    Log.d("app_flow", "Received text: $text")
+
+                    runOnUiThread {
+                        textHistory.add(text) // Add response to history
+                        isProcessing = false
+                    }
                 }
             }
         })
     }
 
-    private fun saveReceivedWavFile(wavData: ByteArray) {
-        val outputFile = File(getExternalFilesDir(null), "converted_audio.wav")
-        try {
-            outputFile.writeBytes(wavData)
-            Log.d("app_flow", "WAV file saved: ${outputFile.absolutePath}")
-            runOnUiThread {
-                Toast.makeText(applicationContext, "Received and saved WAV file", Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: IOException) {
-            Log.e("app_flow", "Failed to save WAV file: ${e.message}")
-        }
-    }
+// Save received WAV file
+//    private fun saveReceivedWavFile(wavData: ByteArray) {
+//        val outputFile = File(getExternalFilesDir(null), "converted_audio.wav")
+//        try {
+//            outputFile.writeBytes(wavData)
+//            Log.d("app_flow", "WAV file saved: ${outputFile.absolutePath}")
+//            runOnUiThread {
+//                Toast.makeText(applicationContext, "Received and saved WAV file", Toast.LENGTH_SHORT).show()
+//            }
+//        } catch (e: IOException) {
+//            Log.e("app_flow", "Failed to save WAV file: ${e.message}")
+//        }
+//    }
 }
