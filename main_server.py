@@ -1,12 +1,32 @@
+import base64
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import StreamingResponse
 import io
+import json
+from openai import AzureOpenAI  
+import os
+from pathlib import Path
+import tempfile
 import wave
+
+"https://azopenai-01.openai.azure.com/openai/deployments//audio/translations?api-version="
+
+endpoint = os.getenv("ENDPOINT_URL", "https://azopenai-01.openai.azure.com/")  
+deployment = os.getenv("DEPLOYMENT_NAME", "whisper-ai-01")  
+subscription_key = os.getenv("AZURE_OPENAI_API_KEY", "4KUDV9FQ2LSfF15vFVaviePjKfhy9g3asUI6eAAQR7JJv07h9uMmJQQJ99BAACHYHv6XJ3w3AAABACOGXp6B")  
+
+# Initialize Azure OpenAI Service client with key-based authentication    
+client = AzureOpenAI(  
+    azure_endpoint=endpoint,  
+    api_key=subscription_key,  
+    api_version="2024-06-01",
+)
 
 app = FastAPI()
 
 @app.post("/upload-audio/")
 async def upload_audio(file: UploadFile = File(...)):
+    # TODO: How does the code handle long processes without timeout
     # Read the raw PCM file
     audio_file = await file.read()
 
@@ -20,6 +40,20 @@ async def upload_audio(file: UploadFile = File(...)):
             wav_file.writeframes(audio_file)
 
         wav_stream.seek(0)  # Rewind the stream for reading
+        
+        with tempfile.NamedTemporaryFile(delete=True, suffix=".wav") as temp_wav_file:
+            temp_wav_file.write(wav_stream.read())
+            temp_wav_file.flush()  # Ensure data is written to disk
+
+            temp_wav_path = Path(os.path.join(Path(__file__).parent, temp_wav_file.name))
+            print(f"Path that is created: {temp_wav_path}")
+            # Generate the completion
+            completion = client.audio.transcriptions.create(
+                file=temp_wav_path,  # Pass the actual file path
+                model=deployment
+            )
+            result = json.loads(completion.to_json()).get("text")
+            print(f"Received from Azure: {result}")
 
         # Return the WAV file as a streaming response
         return StreamingResponse(wav_stream, media_type="audio/wav")

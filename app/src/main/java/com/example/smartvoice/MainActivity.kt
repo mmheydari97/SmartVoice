@@ -144,7 +144,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun sendAudioToServer(pcmData: ByteArray) {
-        val url = "https://b328-174-89-30-201.ngrok-free.app/upload-audio"
+        val url = "https://8000--main--kian-ws--kian--o1bn8ir3s2nsq.pit-1.try.coder.app/upload-audio/"
 
         // Create request body
         val requestBody = MultipartBody.Builder()
