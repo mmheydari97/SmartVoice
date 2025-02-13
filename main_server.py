@@ -12,7 +12,7 @@ import wave
 
 endpoint = os.getenv("ENDPOINT_URL", "https://azopenai-01.openai.azure.com/")  
 deployment = os.getenv("DEPLOYMENT_NAME", "whisper-ai-01")  
-subscription_key = os.getenv("AZURE_OPENAI_API_KEY", "4KUDV9FQ2LSfF15vFVaviePjKfhy9g3asUI6eAAQR7JJv07h9uMmJQQJ99BAACHYHv6XJ3w3AAABACOGXp6B")  
+subscription_key = os.getenv("AZURE_OPENAI_API_KEY", "")  
 
 # Initialize Azure OpenAI Service client with key-based authentication    
 client = AzureOpenAI(  
@@ -51,15 +51,14 @@ async def upload_audio(file: UploadFile = File(...)):
                 file=temp_wav_path,  # Pass the actual file path
                 model=deployment
             )
-            result = completion.to_json()
-            print(f"Received from Azure: {result}")
+            result = completion.to_dict()
+            print(f"Received from Azure: {result} with type: {type(result)}")
 
         # Return the WAV file as a streaming response
         # return StreamingResponse(wav_stream, media_type="audio/wav")
 
         # Return the text result as a JSON response
-        return JSONResponse(content={"text": result})
+        return JSONResponse(content=result)
 
     except Exception as e:
         return {"error": str(e)}
-    
