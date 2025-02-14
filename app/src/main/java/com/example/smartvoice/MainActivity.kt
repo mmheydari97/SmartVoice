@@ -38,7 +38,7 @@ class MainActivity : ComponentActivity() {
     private var isProcessing by mutableStateOf(false)
     private val client = OkHttpClient()
 
-    private val textHistory = mutableStateListOf<String>()
+    private val textHistory = mutableStateListOf<Pair<String, Boolean>>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,8 +64,8 @@ class MainActivity : ComponentActivity() {
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             ) {
-                items(textHistory) { text ->
-                    MessageBubble(text)
+                items(textHistory) { (text, isUser) ->
+                    MessageBubble(text, isUser)
                 }
             }
 
@@ -80,7 +80,8 @@ class MainActivity : ComponentActivity() {
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .height(56.dp),
                 enabled = !isProcessing // Disable button while processing
             ) {
                 Text(if (isRecording) "Stop & Send" else "Start Recording")
@@ -89,18 +90,21 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun MessageBubble(message: String) {
+    fun MessageBubble(message: String, isUser: Boolean) {
+        val backgroundColor = if (isUser) Color(0xFF6757EC) else Color(0xFF6E6E6E)
+
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp)
-                .background(color = Color.LightGray, shape = MaterialTheme.shapes.medium)
+                .background(color = backgroundColor, shape = MaterialTheme.shapes.medium)
                 .padding(12.dp)
         ) {
             Text(
                 text = message,
                 fontSize = 16.sp,
-                textAlign = TextAlign.Start
+                textAlign = TextAlign.Start,
+                color = Color(0xFFFFFFFF) // Ensures text is visible on darker backgrounds
             )
         }
     }
@@ -232,11 +236,14 @@ class MainActivity : ComponentActivity() {
 
                 response.body?.string()?.let {
                     val responseJson = JSONObject(it)
-                    val text = responseJson.getString("text")
-                    Log.d("app_flow", "Received text: $text")
+                    val stt = responseJson.getString("stt")
+                    val instruction = responseJson.getString("instruction")
 
                     runOnUiThread {
-                        textHistory.add(text) // Add response to history
+                        // textHistory.add(text) // Add response to history
+                        textHistory.add(Pair(stt, true))
+                        textHistory.add(Pair(instruction, false))
+
                         isProcessing = false
                     }
                 }
